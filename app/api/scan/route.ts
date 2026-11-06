@@ -1,6 +1,7 @@
 import { brandSponsorActivity, creatorVideos, type Content } from "@/lib/oriane";
 import { chatJSON } from "@/lib/llm";
 import { relay, shouldRelay } from "@/lib/relay";
+import { brandComments, buildMoments, creatorStats, visualFrames } from "@/lib/proof";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -60,7 +61,8 @@ export async function GET(req: Request) {
   if (!handle) return Response.json({ error: "handle required" }, { status: 400 });
 
   const cacheFile = path.join(process.cwd(), ".cache", `${handle}.json`);
-  if (url.searchParams.get("fresh") !== "1") {
+  const rebuild = url.searchParams.get("rebuild") === "1";
+  if (url.searchParams.get("fresh") !== "1" && !rebuild) {
     try {
       return Response.json(JSON.parse(await readFile(cacheFile, "utf8")));
     } catch {}
@@ -72,8 +74,23 @@ export async function GET(req: Request) {
     const { results: videos, totalCount } = await creatorVideos(handle, 40);
     if (!videos.length) return Response.json({ error: `No indexed videos for @${handle}` }, { status: 404 });
 
-    const ask = () => chatJSON<{ brands: LlmBrand[] }>(SYSTEM, { videos: videos.map(compact) }, 20000);
-    const { brands } = await ask().catch(ask); // one retry on a truncated or malformed reply
+    let brands: LlmBrand[];
+    if (rebuild) {
+      // Reuse the brands found last time; only recompute the evidence around them.
+      const prev = JSON.parse(await readFile(cacheFile, "utf8"));
+      const byId = new Map(videos.map((v, i) => [v.platformId, i]));
+      brands = prev.brands.map((b: { name: string; category: string; website?: string; appearances: (LlmBrand["appearances"][number] & { postUrl: string })[] }) => ({
+        name: b.name,
+        category: b.category,
+        website_guess: b.website,
+        appearances: b.appearances
+          .map((a) => ({ ...a, video: byId.get(a.postUrl.split("/").filter(Boolean).pop() ?? "") ?? -1 }))
+          .filter((a) => a.video >= 0),
+      }));
+    } else {
+      const ask = () => chatJSON<{ brands: LlmBrand[] }>(SYSTEM, { videos: videos.map(compact) }, 20000);
+      ({ brands } = await ask().catch(ask)); // one retry on a truncated or malformed reply
+    }
 
     const ranked = brands
       .map((b) => {
@@ -95,6 +112,18 @@ export async function GET(req: Request) {
                   ? `https://www.tiktok.com/@${v.profileHandle}/video/${v.platformId}`
                   : `https://www.instagram.com/reel/${v.platformId}/`,
               publishedAt: v.publishedAt,
+              platform: v.platform,
+              embedUrl:
+                v.platform === "tiktok"
+                  ? `https://www.tiktok.com/player/v1/${v.platformId}?autoplay=1&music_info=0&description=0`
+                  : `https://www.instagram.com/reel/${v.platformId}/embed`,
+              caption: (v.caption ?? "").slice(0, 300),
+              likes: v.likesCount ?? 0,
+              comments: v.commentsCount ?? 0,
+              shares: (v as { sharesCount?: number }).sharesCount ?? 0,
+              moments: buildMoments(v, b.name),
+              audienceComments: brandComments(v, b.name),
+              platformId: v.platformId,
             };
           });
         const free = apps.filter((a) => !a.sponsored);
@@ -119,6 +148,19 @@ export async function GET(req: Request) {
     const demand = await Promise.all(top.map((b) => brandSponsorActivity(b.name).catch(() => null)));
     top.forEach((b, i) => Object.assign(b, { demand: demand[i] }));
 
+    // Product shots: Oriane vision search finds the frames that look like each top brand's product or logo.
+    const visuals = await Promise.all(
+      top.map((b) => visualFrames(b.name, [...new Map(b.appearances.map((a) => [a.platformId, { platform: a.platform, platformId: a.platformId }])).values()]).catch(() => null)),
+    );
+    top.forEach((b, i) => {
+      const vis = visuals[i];
+      if (!vis) return;
+      for (const a of b.appearances) {
+        const shots = vis.get(a.platformId);
+        if (shots?.length) a.moments = buildMoments(videos.find((v) => v.platformId === a.platformId)!, b.name, shots);
+      }
+    });
+
     const v0 = videos[0];
     const result = {
       creator: {
@@ -129,6 +171,9 @@ export async function GET(req: Request) {
         platform: v0.platform,
         videosScanned: videos.length,
         videosIndexed: totalCount,
+        profileUrl:
+          v0.platform === "tiktok" ? `https://www.tiktok.com/@${handle}` : `https://www.instagram.com/${handle}/`,
+        ...creatorStats(videos),
       },
       totals: {
         brands: ranked.length,

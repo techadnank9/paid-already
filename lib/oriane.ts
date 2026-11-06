@@ -1,7 +1,7 @@
 const BASE = "https://connect.oriane.xyz/rest";
 
 export type Chunk = { startSeconds: number; endSeconds: number; text: string };
-export type Frame = { timestampSeconds: number; url?: string; onScreenTextRegions?: { text: string }[] | null };
+export type Frame = { timestampSeconds: number; url?: string; onScreenTextRegions?: { text: string; polygon?: { x: number; y: number }[] }[] | null };
 export type Media = {
   type: string;
   duration?: string | number;
@@ -24,6 +24,7 @@ export type Content = {
   thumbnailMediaUrl?: string;
   viewsCount?: number;
   likesCount?: number;
+  commentsCount?: number;
   interactionsCount?: number;
   hashtags?: string[];
   mentions?: { profileHandle: string }[];
