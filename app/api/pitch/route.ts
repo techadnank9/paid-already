@@ -1,4 +1,5 @@
 import { chatJSON } from "@/lib/llm";
+import { relay, shouldRelay } from "@/lib/relay";
 
 const SYSTEM = `You write a short cold pitch email from a creator to a brand they have already featured for free.
 Tone: confident, warm, specific, no hype words, no emojis. Under 140 words in the body.
@@ -12,6 +13,7 @@ export function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  if (shouldRelay()) return relay(req, await req.text());
   const { creator, brand } = await req.json();
   try {
     const out = await chatJSON<{ subject: string; body: string }>(SYSTEM, { creator, brand }, 4000);

@@ -1,5 +1,6 @@
 import { brandSponsorActivity, creatorVideos, type Content } from "@/lib/oriane";
 import { chatJSON } from "@/lib/llm";
+import { relay, shouldRelay } from "@/lib/relay";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -64,6 +65,8 @@ export async function GET(req: Request) {
       return Response.json(JSON.parse(await readFile(cacheFile, "utf8")));
     } catch {}
   }
+
+  if (shouldRelay()) return relay(req);
 
   try {
     const { results: videos, totalCount } = await creatorVideos(handle, 40);
