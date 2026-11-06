@@ -69,7 +69,8 @@ export async function GET(req: Request) {
     const { results: videos, totalCount } = await creatorVideos(handle, 40);
     if (!videos.length) return Response.json({ error: `No indexed videos for @${handle}` }, { status: 404 });
 
-    const { brands } = await chatJSON<{ brands: LlmBrand[] }>(SYSTEM, { videos: videos.map(compact) });
+    const ask = () => chatJSON<{ brands: LlmBrand[] }>(SYSTEM, { videos: videos.map(compact) }, 20000);
+    const { brands } = await ask().catch(ask); // one retry on a truncated or malformed reply
 
     const ranked = brands
       .map((b) => {
