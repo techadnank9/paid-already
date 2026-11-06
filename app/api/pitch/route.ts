@@ -7,6 +7,10 @@ If the brand is already paying other creators, mention it lightly ("you're alrea
 End with a clear, low-friction ask (a 3-video package or a 15-minute call).
 Return JSON: {"subject":"","body":""}`;
 
+export function OPTIONS() {
+  return new Response(null, { status: 204 });
+}
+
 export async function POST(req: Request) {
   const { creator, brand } = await req.json();
   try {
