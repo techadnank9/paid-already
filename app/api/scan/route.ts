@@ -4,7 +4,7 @@ import { relay, shouldRelay } from "@/lib/relay";
 import { instagramPosts, toDataUrl } from "@/lib/instagram";
 import { scanImages } from "@/app/api/scan-media/route";
 import { brandComments, buildMoments, creatorStats, visualFrames } from "@/lib/proof";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readScan, writeScan } from "@/lib/store";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
@@ -80,12 +80,10 @@ export async function GET(req: Request) {
   const handle = (url.searchParams.get("handle") ?? "").replace(/^@/, "").trim().toLowerCase();
   if (!handle) return Response.json({ error: "handle required" }, { status: 400 });
 
-  const cacheFile = path.join(process.cwd(), ".cache", `${handle}.json`);
   const rebuild = url.searchParams.get("rebuild") === "1";
   if (url.searchParams.get("fresh") !== "1" && !rebuild) {
-    try {
-      return Response.json(withReels(JSON.parse(await readFile(cacheFile, "utf8")), publicOrigin(req)));
-    } catch {}
+    const saved = await readScan(handle);
+    if (saved) return Response.json(withReels(saved, publicOrigin(req)));
   }
 
   if (shouldRelay()) return relay(req);
@@ -116,7 +114,7 @@ export async function GET(req: Request) {
     let brands: LlmBrand[];
     if (rebuild) {
       // Reuse the brands found last time; only recompute the evidence around them.
-      const prev = JSON.parse(await readFile(cacheFile, "utf8"));
+      const prev = await readScan(handle);
       const byId = new Map(videos.map((v, i) => [v.platformId, i]));
       brands = prev.brands.map((b: { name: string; category: string; website?: string; appearances: (LlmBrand["appearances"][number] & { postUrl: string })[] }) => ({
         name: b.name,
@@ -226,9 +224,7 @@ export async function GET(req: Request) {
       },
       brands: ranked,
     };
-    await mkdir(path.dirname(cacheFile), { recursive: true });
-    await writeFile(cacheFile, JSON.stringify(result));
-    return Response.json(withReels(result, publicOrigin(req)));
+    return Response.json(withReels(await writeScan(handle, result), publicOrigin(req)));
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }

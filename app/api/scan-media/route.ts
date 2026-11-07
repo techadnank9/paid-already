@@ -1,7 +1,6 @@
 import { visionJSON } from "@/lib/llm";
 import { brandSponsorActivity } from "@/lib/oriane";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { writeScan } from "@/lib/store";
 
 export const maxDuration = 120;
 
@@ -106,6 +105,7 @@ export async function scanImages(body: { handle?: string; followers?: number; na
         name: body.name || handle,
         avatar: body.avatar ?? "",
         bio: body.bio ?? "",
+        businessEmail: (body.bio ?? "").match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0] ?? null,
         followers,
         platform: "instagram",
         videosScanned: images.length,
@@ -123,9 +123,6 @@ export async function scanImages(body: { handle?: string; followers?: number; na
       brands: ranked,
     };
     // Cache under the handle so the proof page and pitch can load it like any other scan.
-    const cacheFile = path.join(process.cwd(), ".cache", `${handle}.json`);
-    await mkdir(path.dirname(cacheFile), { recursive: true });
-    await writeFile(cacheFile, JSON.stringify(result));
-    return result;
+    return writeScan(handle, result);
   }
 }

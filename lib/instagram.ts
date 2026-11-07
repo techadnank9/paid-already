@@ -30,9 +30,13 @@ export async function instagramPosts(handle: string): Promise<ProfilePosts | nul
   const postImages = images.filter((u) => u.includes("s640x640"));
   const postLinks: string[] = (r.links ?? []).filter((l: string) => /instagram\.com\/[^/]+\/(p|reel)\//.test(l));
   if (!postImages.length) return null;
-  const followers = Number((r.description ?? "").match(/([\d,.]+)\s*Followers/i)?.[1]?.replace(/[,.]/g, "") ?? 0);
+  const followers = parseCount((r.description ?? "").match(/([\d,.]+\s*[KMB]?)\s*Followers/i)?.[1] ?? "0");
   const name = (r.title ?? "").match(/^(.*?)\s*\(@/)?.[1] ?? handle;
-  const bio = (r.text ?? "").split("\n").slice(8, 14).join(" ").slice(0, 200);
+  // Bio sits between the display name and the "Link icon" / "Posts" lines on the public profile.
+  const lines: string[] = (r.text ?? "").split("\n").map((l: string) => l.trim()).filter(Boolean);
+  const start = lines.findIndex((l) => l === name) + 1;
+  const end = lines.findIndex((l, i) => i >= start && /^(Link icon|Posts|start here|Reels)$/.test(l));
+  const bio = start > 0 ? lines.slice(start, end > start ? end : start + 5).join(" · ").slice(0, 300) : "";
   return {
     name,
     followers,
@@ -49,4 +53,11 @@ export async function toDataUrl(url: string) {
   const r = await fetch(url);
   if (!r.ok) return null;
   return `data:${r.headers.get("content-type") ?? "image/jpeg"};base64,${Buffer.from(await r.arrayBuffer()).toString("base64")}`;
+}
+
+function parseCount(raw: string) {
+  const m = raw.replace(/,/g, "").trim().match(/^([\d.]+)\s*([KMB]?)$/i);
+  if (!m) return 0;
+  const mult = { K: 1e3, M: 1e6, B: 1e9 }[m[2].toUpperCase() as "K" | "M" | "B"] ?? 1;
+  return Math.round(parseFloat(m[1]) * mult);
 }
