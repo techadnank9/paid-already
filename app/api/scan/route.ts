@@ -4,6 +4,7 @@ import { relay, shouldRelay } from "@/lib/relay";
 import { brandComments, buildMoments, creatorStats, visualFrames } from "@/lib/proof";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 
 export const maxDuration = 120;
 
@@ -55,6 +56,23 @@ function frameFor(c: Content, brand: string) {
   return f?.url ?? null;
 }
 
+function publicOrigin(req: Request) {
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  return host ? `${proto}://${host}` : "https://paid-already.onrender.com";
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+// Attach the pre-rendered sponsor reel (public/reels/<handle>/<brand>.mp4) to each brand that has one.
+function withReels<T extends { creator: { handle: string }; brands: { name: string; reelUrl?: string }[] }>(scan: T, origin: string) {
+  for (const b of scan.brands) {
+    const rel = `reels/${scan.creator.handle}/${slug(b.name)}.mp4`;
+    if (existsSync(path.join(process.cwd(), "public", rel))) b.reelUrl = `${origin}/${rel}`;
+  }
+  return scan;
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const handle = (url.searchParams.get("handle") ?? "").replace(/^@/, "").trim().toLowerCase();
@@ -64,7 +82,7 @@ export async function GET(req: Request) {
   const rebuild = url.searchParams.get("rebuild") === "1";
   if (url.searchParams.get("fresh") !== "1" && !rebuild) {
     try {
-      return Response.json(JSON.parse(await readFile(cacheFile, "utf8")));
+      return Response.json(withReels(JSON.parse(await readFile(cacheFile, "utf8")), publicOrigin(req)));
     } catch {}
   }
 
@@ -189,7 +207,7 @@ export async function GET(req: Request) {
     };
     await mkdir(path.dirname(cacheFile), { recursive: true });
     await writeFile(cacheFile, JSON.stringify(result));
-    return Response.json(result);
+    return Response.json(withReels(result, publicOrigin(req)));
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
