@@ -9,7 +9,7 @@ const CPM = 20;
 
 // For creators Oriane hasn't indexed yet: the creator uploads photos or screenshots of their posts,
 // a vision model finds every brand in them, and the result has the same shape as /api/scan.
-type Upload = { dataUrl: string; views?: number; caption?: string };
+type Upload = { dataUrl: string; views?: number; caption?: string; displayUrl?: string; postUrl?: string };
 type Found = {
   brands: {
     name: string;
@@ -33,9 +33,17 @@ export function OPTIONS() {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { handle?: string; followers?: number; name?: string; images?: Upload[] };
+    return Response.json(await scanImages(body));
+  } catch (e) {
+    return Response.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
+
+export async function scanImages(body: { handle?: string; followers?: number; name?: string; avatar?: string; bio?: string; images?: Upload[] }) {
+  {
     const handle = (body.handle ?? "").replace(/^@/, "").trim().toLowerCase() || "creator";
     const images = (body.images ?? []).filter((i) => i?.dataUrl?.startsWith("data:image/")).slice(0, 12);
-    if (!images.length) return Response.json({ error: "Add at least one photo or screenshot." }, { status: 400 });
+    if (!images.length) throw new Error("Add at least one photo or screenshot.");
     const followers = Math.max(0, Number(body.followers) || 0);
     // Without platform stats, estimate each post's reach as 30% of followers.
     const estViews = (u: Upload) => (u.views && u.views > 0 ? u.views : Math.round(followers * 0.3));
@@ -60,11 +68,13 @@ export async function POST(req: Request) {
               shadow: !declared,
               views: estViews(u),
               timestamp: null,
-              frameUrl: u.dataUrl,
-              thumbnail: u.dataUrl,
-              postUrl: `https://www.instagram.com/${handle}/`,
+              frameUrl: u.displayUrl ?? u.dataUrl,
+              thumbnail: u.displayUrl ?? u.dataUrl,
+              postUrl: u.postUrl ?? `https://www.instagram.com/${handle}/`,
+              platform: "instagram",
+              ...(u.postUrl ? { embedUrl: u.postUrl.replace(/\/$/, "") + "/embed" } : {}),
               caption: u.caption ?? "",
-              moments: [{ kind: a.signals?.includes("on_screen") ? "on_screen" : "shown", t: 0, frameUrl: u.dataUrl, text: a.evidence, highlights }],
+              moments: [{ kind: a.signals?.includes("on_screen") ? "on_screen" : "shown", t: 0, frameUrl: u.displayUrl ?? u.dataUrl, text: a.evidence, highlights }],
               audienceComments: [],
             };
           });
@@ -94,7 +104,8 @@ export async function POST(req: Request) {
       creator: {
         handle,
         name: body.name || handle,
-        avatar: "",
+        avatar: body.avatar ?? "",
+        bio: body.bio ?? "",
         followers,
         platform: "instagram",
         videosScanned: images.length,
@@ -115,8 +126,6 @@ export async function POST(req: Request) {
     const cacheFile = path.join(process.cwd(), ".cache", `${handle}.json`);
     await mkdir(path.dirname(cacheFile), { recursive: true });
     await writeFile(cacheFile, JSON.stringify(result));
-    return Response.json(result);
-  } catch (e) {
-    return Response.json({ error: (e as Error).message }, { status: 500 });
+    return result;
   }
 }

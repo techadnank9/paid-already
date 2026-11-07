@@ -1,6 +1,8 @@
 import { brandSponsorActivity, creatorVideos, type Content } from "@/lib/oriane";
 import { chatJSON } from "@/lib/llm";
 import { relay, shouldRelay } from "@/lib/relay";
+import { instagramPosts, toDataUrl } from "@/lib/instagram";
+import { scanImages } from "@/app/api/scan-media/route";
 import { brandComments, buildMoments, creatorStats, visualFrames } from "@/lib/proof";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -90,6 +92,22 @@ export async function GET(req: Request) {
 
   try {
     const { results: videos, totalCount } = await creatorVideos(handle, 40);
+    if (!videos.length) {
+      // Not in Oriane's index: read the public Instagram grid instead and scan the post images.
+      const ig = await instagramPosts(handle).catch(() => null);
+      if (ig) {
+        const images = (
+          await Promise.all(ig.posts.map(async (p) => {
+            const dataUrl = await toDataUrl(p.imageUrl).catch(() => null);
+            return dataUrl ? { dataUrl, displayUrl: p.imageUrl, postUrl: p.postUrl } : null;
+          }))
+        ).filter((x): x is NonNullable<typeof x> => !!x);
+        if (images.length) {
+          const result = await scanImages({ handle, name: ig.name, followers: ig.followers, avatar: ig.avatar, bio: ig.bio, images });
+          return Response.json(withReels(result, publicOrigin(req)));
+        }
+      }
+    }
     if (!videos.length) return Response.json(
         { error: `@${handle} isn't in Oriane's video index yet. Upload photos or screenshots of your posts and we'll find the brands in them.`, notIndexed: true },
         { status: 404 },
