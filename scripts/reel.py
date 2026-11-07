@@ -118,7 +118,7 @@ def title_card(creator, brand, b, accent):
     for line in [f"Featured {b['freeCount']}× — unpaid", f"{fmt(b['freeViews'])} views of free exposure", f"Worth ${b['value']:,} at $20 CPM"]:
         d.text((W // 2, y), line, font=font(54, False), fill=INK, anchor="mm")
         y += 90
-    d.text((W // 2, H - 140), "PAID ALREADY", font=font(36), fill=LIME, anchor="mm")
+    d.text((W // 2, H - 140), "OWED", font=font(36), fill=LIME, anchor="mm")
     return im
 
 
@@ -172,7 +172,7 @@ def end_card(creator, brand, brandinfo, accent):
         d.text((W // 2, 1280), f"{creator['avgEngagementRate']}% engagement · {fmt(creator.get('avgViews', 0))} avg views", font=font(48, False), fill=MUTED, anchor="mm")
     if creator.get("businessEmail"):
         d.text((W // 2, 1420), creator["businessEmail"], font=font(46), fill=LIME, anchor="mm")
-    d.text((W // 2, H - 140), "PAID ALREADY", font=font(36), fill=LIME, anchor="mm")
+    d.text((W // 2, H - 140), "OWED", font=font(36), fill=LIME, anchor="mm")
     return im
 
 

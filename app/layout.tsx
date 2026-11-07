@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paid Already",
+  title: "Owed",
   description: "Find the brands you already promote for free, and get paid for it.",
 };
 
