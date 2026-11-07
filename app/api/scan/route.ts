@@ -90,7 +90,10 @@ export async function GET(req: Request) {
 
   try {
     const { results: videos, totalCount } = await creatorVideos(handle, 40);
-    if (!videos.length) return Response.json({ error: `No indexed videos for @${handle}` }, { status: 404 });
+    if (!videos.length) return Response.json(
+        { error: `@${handle} isn't in Oriane's video index yet. Upload photos or screenshots of your posts and we'll find the brands in them.`, notIndexed: true },
+        { status: 404 },
+      );
 
     let brands: LlmBrand[];
     if (rebuild) {

@@ -46,3 +46,23 @@ export async function chatJSON<T>(system: string, user: unknown, maxTokens = 600
   if (!res.ok) throw new Error(`LLM ${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
   return parseJSON<T>(json.choices?.[0]?.message?.content ?? "{}");
 }
+
+// Vision variant: same call, with images attached as data URLs.
+export async function visionJSON<T>(system: string, text: string, images: string[], maxTokens = 8000): Promise<T> {
+  const res = await fetch(`${process.env.LLM_BASE_URL ?? "https://api.gmi-serving.com/v1"}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.LLM_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.LLM_MODEL,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: [{ type: "text", text }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))] },
+      ],
+    }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(`LLM ${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+  return parseJSON<T>(json.choices?.[0]?.message?.content ?? "{}");
+}
